@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Ghép Tranh Nhận E‑Voucher</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+          animation: {
+            float: 'float 3s ease-in-out infinite',
+            pop: 'pop .45s cubic-bezier(.17,.89,.32,1.49)',
+            shake: 'shake .4s ease-in-out'
+          },
+          keyframes: {
+            float: { '0%,100%': { transform: 'translateY(0)' }, '50%': { transform: 'translateY(-7px)' } },
+            pop: { '0%': { transform: 'scale(.75)', opacity: '0' }, '100%': { transform: 'scale(1)', opacity: '1' } },
+            shake: { '0%,100%': { transform: 'translateX(0)' }, '25%': { transform: 'translateX(-7px)' }, '75%': { transform: 'translateX(7px)' } }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    * { -webkit-tap-highlight-color: transparent; }
+    body {
+      min-height: 100svh;
+      background:
+        radial-gradient(circle at 15% 5%, rgba(255,255,255,.18), transparent 28%),
+        radial-gradient(circle at 90% 18%, rgba(251,191,36,.22), transparent 25%),
+        linear-gradient(145deg, #4c1d95 0%, #7e22ce 42%, #db2777 100%);
+    }
+    .glass { background: rgba(255,255,255,.12); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,.2); }
+    .piece {
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+      cursor: grab;
+      transition: transform .18s ease, box-shadow .18s ease, opacity .18s ease;
+    }
+    .piece:active { cursor: grabbing; transform: scale(.97); }
+    .piece.selected { outline: 4px solid #fbbf24; box-shadow: 0 0 0 7px rgba(251,191,36,.2), 0 12px 30px rgba(0,0,0,.25); transform: scale(.96); }
+    .slot { transition: background .2s, transform .2s, border-color .2s; }
+    .slot.over { background: rgba(250,204,21,.18); border-color: #facc15; transform: scale(.98); }
+    .correct { animation: pop .35s ease-out; }
+    #confettiCanvas { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 80; }
+    .modal-backdrop { background: rgba(17, 8, 40, .72); backdrop-filter: blur(7px); }
+    .voucher { background: linear-gradient(135deg, #fff7ed, #ffffff); }
+    .coupon-cut { position: relative; }
+    .coupon-cut:before, .coupon-cut:after {
+      content: ''; position: absolute; top: 50%; width: 20px; height: 20px;
+      background: #5b21b6; border-radius: 50%; transform: translateY(-50%);
+    }
+    .coupon-cut:before { left: -11px; }
+    .coupon-cut:after { right: -11px; }
+    @media (min-width: 640px) {
+      .game-shell { max-width: 500px; }
+    }
+  </style>
+</head>
+
+<body class="text-white font-sans">
+  <canvas id="confettiCanvas"></canvas>
+
+  <main class="game-shell mx-auto min-h-[100svh] px-4 py-5 sm:py-8 flex flex-col">
+    <header class="text-center">
+      <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full glass text-xs font-bold tracking-wide mb-3 animate-float">
+        🎁 MINI GAME • NHẬN E‑VOUCHER
+      </div>
+      <h1 class="text-3xl sm:text-4xl font-black leading-tight">Ghép Tranh<br><span class="text-amber-300">Nhận Quà!</span></h1>
+      <p class="mt-2 text-white/75 text-sm">Ghép đúng 4 mảnh để mở khóa phần quà bí mật.</p>
+    </header>
+
+    <section class="glass rounded-3xl p-4 sm:p-5 mt-5 shadow-2xl">
+      <div class="flex items-center justify-between mb-3">
+        <div>
+          <p class="text-xs text-white/60 uppercase tracking-wider font-bold">Tiến độ</p>
+          <p id="status" class="font-extrabold">0 / 4 mảnh đúng</p>
+        </div>
+        <button id="shuffleBtn" class="bg-white/10 hover:bg-white/20 active:scale-95 rounded-xl px-3 py-2 text-sm font-bold transition">
+          🔀 Đảo mảnh
+        </button>
+      </div>
+
+      <div class="h-2 bg-black/20 rounded-full overflow-hidden mb-5">
+        <div id="progress" class="h-full rounded-full bg-gradient-to-r from-amber-300 to-pink-400 transition-all duration-500" style="width:0%"></div>
+      </div>
+
+      <!-- 2x2 target board -->
+      <div id="board" class="grid grid-cols-2 gap-2 aspect-square rounded-2xl bg-black/20 p-2">
+        <div class="slot rounded-xl border-2 border-dashed border-white/25 flex items-center justify-center text-white/35 text-xs font-bold" data-pos="0">MẢNH 1</div>
+        <div class="slot rounded-xl border-2 border-dashed border-white/25 flex items-center justify-center text-white/35 text-xs font-bold" data-pos="1">MẢNH 2</div>
+        <div class="slot rounded-xl border-2 border-dashed border-white/25 flex items-center justify-center text-white/35 text-xs font-bold" data-pos="2">MẢNH 3</div>
+        <div class="slot rounded-xl border-2 border-dashed border-white/25 flex items-center justify-center text-white/35 text-xs font-bold" data-pos="3">MẢNH 4</div>
+      </div>
+
+      <div class="mt-5">
+        <div class="flex items-center justify-between mb-2">
+          <p class="font-bold text-sm">Các mảnh tranh</p>
+          <p class="text-xs text-white/55">Kéo thả hoặc chạm để chọn</p>
+        </div>
+        <div id="pieces" class="grid grid-cols-4 gap-2"></div>
+      </div>
+
+      <div id="hint" class="mt-4 rounded-2xl bg-amber-300/10 border border-amber-200/15 p-3 text-center text-xs text-white/70">
+        💡 <b>Mẹo:</b> Chọn một mảnh rồi chọn ô đích để ghép nhanh trên điện thoại.
+      </div>
+    </section>
+
+    <footer class="text-center text-xs text-white/45 mt-auto pt-5">
+      🔒 Mã quà tặng chỉ hiển thị sau khi hoàn thành trò chơi
+    </footer>
+  </main>
+
+  <!-- Success modal -->
+  <div id="modal" class="hidden fixed inset-0 z-[70] modal-backdrop items-center justify-center p-5">
+    <div class="w-full max-w-sm voucher text-slate-900 rounded-[28px] shadow-2xl overflow-hidden animate-pop">
+      <div class="bg-gradient-to-br from-fuchsia-600 to-violet-700 text-white text-center px-6 py-7">
+        <div class="text-5xl mb-2">🎉</div>
+        <h2 class="text-2xl font-black">Bạn đã ghép đúng!</h2>
+        <p class="text-white/80 text-sm mt-1">Chúc mừng! Đây là phần quà dành cho bạn.</p>
+      </div>
+
+      <div class="coupon-cut p-6">
+        <p class="text-xs font-bold text-slate-400 uppercase tracking-widest text-center">E‑Voucher của bạn</p>
+        <div class="mt-3 rounded-2xl border-2 border-dashed border-violet-200 bg-violet-50 p-4 text-center">
+          <div id="voucherCode" class="text-2xl font-black tracking-[.18em] text-violet-700">GAME-XXXX</div>
+          <p class="text-xs text-slate-400 mt-2">Giảm 50.000đ • Hạn dùng 30 ngày</p>
+        </div>
+
+        <button id="copyBtn" class="w-full mt-4 rounded-2xl bg-violet-700 hover:bg-violet-800 active:scale-[.98] text-white py-3.5 font-extrabold transition shadow-lg">
+          📋 Copy mã voucher
+        </button>
+        <button id="closeBtn" class="w-full mt-2 py-2 text-sm font-bold text-slate-500 hover:text-slate-800">
+          Đóng
+        </button>
+      </div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  // ====== CONFIG ======
+  // Bạn có thể thay IMAGE_URL bằng ảnh sản phẩm/brand thật.
+  const IMAGE_URL = "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1000&q=85";
+
+  const state = {
+    order: [0,1,2,3],
+    placed: [null,null,null,null],
+    selectedPiece: null,
+    draggedPiece: null,
+    correct: 0
+  };
+
+  const piecesEl = document.getElementById('pieces');
+  const slots = [...document.querySelectorAll('.slot')];
+  const statusEl = document.getElementById('status');
+  const progressEl = document.getElementById('progress');
+  const modal = document.getElementById('modal');
+  const voucherCodeEl = document.getElementById('voucherCode');
+  const copyBtn = document.getElementById('copyBtn');
+
+  function pieceStyle(index) {
+    const x = index % 2;
+    const y = Math.floor(index / 2);
+    return `
+      background-image:url("${IMAGE_URL}");
+      background-size:200% 200%;
+      background-position:${x * 100}% ${y * 100}%;
+    `;
+  }
+
+  function renderPieces() {
+    piecesEl.innerHTML = '';
+    state.order.forEach(index => {
+      if (state.placed.includes(index)) return;
+
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'piece aspect-square rounded-xl overflow-hidden border border-white/15 shadow-lg relative';
+      el.dataset.piece = index;
+      el.draggable = true;
+      el.style.cssText = pieceStyle(index);
+      el.setAttribute('aria-label', `Mảnh tranh ${index + 1}`);
+
+      const badge = document.createElement('span');
+      badge.className = 'absolute bottom-1 left-1 min-w-6 h-6 px-1.5 rounded-full bg-black/55 backdrop-blur text-[10px] font-black flex items-center justify-center';
+      badge.textContent = index + 1;
+      el.appendChild(badge);
+
+      el.addEventListener('click', () => selectPiece(index, el));
+      el.addEventListener('dragstart', e => {
+        state.draggedPiece = index;
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', String(index));
+        el.classList.add('opacity-50');
+      });
+      el.addEventListener('dragend', () => el.classList.remove('opacity-50'));
+
+      piecesEl.appendChild(el);
+    });
+  }
+
+  function selectPiece(index, el) {
+    document.querySelectorAll('.piece').forEach(p => p.classList.remove('selected'));
+    if (state.selectedPiece === index) {
+      state.selectedPiece = null;
+      return;
+    }
+    state.selectedPiece = index;
+    el.classList.add('selected');
+    if (navigator.vibrate) navigator.vibrate(15);
+  }
+
+  function placePiece(pos, pieceIndex) {
+    if (pieceIndex == null || state.placed.includes(pieceIndex)) return;
+
+    // Nếu ô đang có mảnh, trả mảnh cũ về khay.
+    const old = state.placed[pos];
+    if (old !== null) {
+      state.placed[pos] = null;
+      renderPieces();
+    }
+
+    if (pieceIndex !== pos) {
+      // Sai vị trí: rung nhẹ và giữ mảnh trong khay.
+      const slot = slots[pos];
+      slot.classList.remove('animate-shake');
+      void slot.offsetWidth;
+      slot.classList.add('animate-shake');
+      state.selectedPiece = null;
+      if (navigator.vibrate) navigator.vibrate([30,40,30]);
+      return;
+    }
+
+    state.placed[pos] = pieceIndex;
+    state.selectedPiece = null;
+    renderBoard();
+    renderPieces();
+    updateProgress();
+
+    if (navigator.vibrate) navigator.vibrate(30);
+    if (state.correct === 4) setTimeout(winGame, 350);
+  }
+
+  function renderBoard() {
+    slots.forEach((slot, pos) => {
+      const index = state.placed[pos];
+      slot.innerHTML = '';
+      slot.classList.remove('correct', 'over');
+
+      if (index === null) {
+        slot.textContent = `MẢNH ${pos + 1}`;
+        slot.className = 'slot rounded-xl border-2 border-dashed border-white/25 flex items-center justify-center text-white/35 text-xs font-bold';
+      } else {
+        slot.className = 'slot correct rounded-xl overflow-hidden border-2 border-emerald-300/60 relative shadow-lg';
+        const img = document.createElement('div');
+        img.className = 'w-full h-full';
+        img.style.cssText = pieceStyle(index);
+        slot.appendChild(img);
+
+        const check = document.createElement('span');
+        check.className = 'absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-emerald-500 text-white text-xs font-black flex items-center justify-center shadow';
+        check.textContent = '✓';
+        slot.appendChild(check);
+      }
+    });
+  }
+
+  function updateProgress() {
+    state.correct = state.placed.filter(x => x !== null).length;
+    statusEl.textContent = `${state.correct} / 4 mảnh đúng`;
+    progressEl.style.width = `${state.correct * 25}%`;
+  }
+
+  slots.forEach(slot => {
+    slot.addEventListener('dragover', e => {
+      e.preventDefault();
+      slot.classList.add('over');
+    });
+    slot.addEventListener('dragleave', () => slot.classList.remove('over'));
+    slot.addEventListener('drop', e => {
+      e.preventDefault();
+      slot.classList.remove('over');
+      const index = Number(e.dataTransfer.getData('text/plain'));
+      placePiece(Number(slot.dataset.pos), index);
+    });
+    slot.addEventListener('click', () => {
+      if (state.selectedPiece !== null) placePiece(Number(slot.dataset.pos), state.selectedPiece);
+    });
+  });
+
+  document.getElementById('shuffleBtn').addEventListener('click', () => {
+    // Reset + random order
+    state.placed = [null,null,null,null];
+    state.selectedPiece = null;
+    state.order = [0,1,2,3].sort(() => Math.random() - .5);
+    renderBoard();
+    renderPieces();
+    updateProgress();
+  });
+
+  function randomCode() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let out = 'GAME-';
+    for (let i = 0; i < 8; i++) out += chars[Math.floor(Math.random() * chars.length)];
+    return out.slice(0, 9) + '-' + out.slice(9);
+  }
+
+  function winGame() {
+    voucherCodeEl.textContent = randomCode();
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    launchConfetti();
+  }
+
+  copyBtn.addEventListener('click', async () => {
+    const code = voucherCodeEl.textContent;
+    try {
+      await navigator.clipboard.writeText(code);
+      copyBtn.textContent = '✓ Đã copy mã!';
+      setTimeout(() => copyBtn.textContent = '📋 Copy mã voucher', 1600);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = code;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+      copyBtn.textContent = '✓ Đã copy mã!';
+      setTimeout(() => copyBtn.textContent = '📋 Copy mã voucher', 1600);
+    }
+  });
+
+  document.getElementById('closeBtn').addEventListener('click', () => {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  });
+
+  modal.addEventListener('click', e => {
+    if (e.target === modal) {
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+  });
+
+  // Lightweight canvas confetti — no external library required.
+  function launchConfetti() {
+    const canvas = document.getElementById('confettiCanvas');
+    const ctx = canvas.getContext('2d');
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = innerWidth * dpr;
+    canvas.height = innerHeight * dpr;
+    ctx.scale(dpr, dpr);
+
+    const colors = ['#fbbf24','#fb7185','#a78bfa','#34d399','#60a5fa','#f9a8d4'];
+    const particles = Array.from({length: 180}, () => ({
+      x: innerWidth / 2 + (Math.random() - .5) * 180,
+      y: innerHeight * .38,
+      vx: (Math.random() - .5) * 12,
+      vy: -Math.random() * 13 - 4,
+      g: .22 + Math.random() * .16,
+      size: 5 + Math.random() * 7,
+      rot: Math.random() * 6.28,
+      vr: (Math.random() - .5) * .25,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      life: 100 + Math.random() * 80
+    }));
+
+    let frame = 0;
+    function tick() {
+      ctx.clearRect(0,0,innerWidth,innerHeight);
+      particles.forEach(p => {
+        p.x += p.vx; p.y += p.vy; p.vy += p.g; p.rot += p.vr; p.life--;
+        ctx.save();
+        ctx.translate(p.x,p.y); ctx.rotate(p.rot);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.size/2,-p.size/3,p.size,p.size*.65);
+        ctx.restore();
+      });
+      frame++;
+      if (frame < 180) requestAnimationFrame(tick);
+      else ctx.clearRect(0,0,innerWidth,innerHeight);
+    }
+    tick();
+  }
+
+  renderBoard();
+  renderPieces();
+  updateProgress();
+})();
+</script>
+</body>
+</html>
